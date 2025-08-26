@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Bird 3D</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; justify-content: center; align-items: center;
+      flex-direction: column; background: rgba(0,0,0,0.5);
+      color: white; font-family: Arial; font-size: 24px;
+    }
+    button {
+      padding: 10px 20px; margin-top: 20px;
+      font-size: 20px; cursor: pointer;
+      border-radius: 10px; border: none;
+    }
+  </style>
+</head>
+<body>
+<div id="overlay">
+  <h1>Flappy Bird 3D</h1>
+  <button id="startBtn">Start Game</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+<script>
+  // Scene, Camera, Renderer
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Bird
+  const birdGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const birdMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+  const bird = new THREE.Mesh(birdGeometry, birdMaterial);
+  scene.add(bird);
+
+  // Ground
+  const groundGeometry = new THREE.PlaneGeometry(50, 50);
+  const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x228B22 });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -5;
+  scene.add(ground);
+
+  // Pipes
+  const pipes = [];
+  const pipeGap = 5; // bigger gap
+  function createPipe(x) {
+    const centerY = Math.random() * 4 - 2; // random vertical position
+
+    const topGeometry = new THREE.BoxGeometry(1.5, 20, 2);
+    const topMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const topPipe = new THREE.Mesh(topGeometry, topMaterial);
+    topPipe.position.set(x, centerY + pipeGap + 10, -5);
+
+    const bottomGeometry = new THREE.BoxGeometry(1.5, 20, 2);
+    const bottomMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const bottomPipe = new THREE.Mesh(bottomGeometry, bottomMaterial);
+    bottomPipe.position.set(x, centerY - pipeGap - 10, -5);
+
+    scene.add(topPipe);
+    scene.add(bottomPipe);
+    pipes.push({ top: topPipe, bottom: bottomPipe, passed: false });
+  }
+
+  // Bird physics
+  let velocity = 0;
+  const gravity = -0.008;
+  const lift = 0.15;
+  let isRunning = false;
+  let score = 0;
+
+  function flap() {
+    if (isRunning) velocity = lift;
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") flap();
+  });
+  document.addEventListener("mousedown", flap);
+
+  camera.position.z = 10;
+  camera.position.y = 2;
+
+  function resetGame() {
+    // Reset bird
+    bird.position.set(0, 0, 0);
+    velocity = 0;
+    score = 0;
+
+    // Remove old pipes
+    pipes.forEach(p => {
+      scene.remove(p.top);
+      scene.remove(p.bottom);
+    });
+    pipes.length = 0;
+
+    // Create new pipes
+    for (let i = 0; i < 5; i++) createPipe(10 + i * 6);
+  }
+
+  function checkCollision() {
+    const birdBox = new THREE.Box3().setFromObject(bird);
+
+    // Ground and ceiling
+    if (bird.position.y < -4.5 || bird.position.y > 8) {
+      gameOver();
+    }
+
+    // Pipes
+    for (const p of pipes) {
+      const topBox = new THREE.Box3().setFromObject(p.top);
+      const bottomBox = new THREE.Box3().setFromObject(p.bottom);
+
+      if (birdBox.intersectsBox(topBox) || birdBox.intersectsBox(bottomBox)) {
+        gameOver();
+      }
+
+      // Scoring (bird passes pipe)
+      if (!p.passed && p.top.position.x < bird.position.x) {
+        score++;
+        p.passed = true;
+        console.log("Score:", score);
+      }
+    }
+  }
+
+  function gameOver() {
+    isRunning = false;
+    document.getElementById("overlay").style.display = "flex";
+    document.getElementById("overlay").innerHTML = `
+      <h1>Game Over</h1>
+      <p>Score: ${score}</p>
+      <button id="restartBtn">Restart</button>
+    `;
+    document.getElementById("restartBtn").onclick = () => {
+      document.getElementById("overlay").style.display = "none";
+      resetGame();
+      isRunning = true;
+    };
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (isRunning) {
+      velocity += gravity;
+      bird.position.y += velocity;
+
+      pipes.forEach(p => {
+        p.top.position.x -= 0.05;
+        p.bottom.position.x -= 0.05;
+      });
+
+      // Recycle pipes
+      if (pipes[0].top.position.x < -10) {
+        const old = pipes.shift();
+        scene.remove(old.top);
+        scene.remove(old.bottom);
+        createPipe(15);
+      }
+
+      checkCollision();
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  document.getElementById("startBtn").onclick = () => {
+    document.getElementById("overlay").style.display = "none";
+    resetGame();
+    isRunning = true;
+  };
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
